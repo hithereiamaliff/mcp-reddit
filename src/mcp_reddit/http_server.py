@@ -232,13 +232,35 @@ middleware = [
 ]
 
 # Create ASGI app with middleware
-app = mcp.http_app(middleware=middleware)
+mcp_app = mcp.http_app(middleware=middleware)
+
+
+# Create a wrapper Starlette app with health endpoint
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route, Mount
+
+async def health_check(request):
+    """HTTP health check endpoint"""
+    return JSONResponse({
+        "status": "healthy",
+        "server": "Reddit MCP Server",
+        "version": "1.0.0",
+        "transport": "streamable-http",
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    })
+
+# Mount MCP app under /mcp and add health endpoint
+app = Starlette(
+    routes=[
+        Route("/health", health_check, methods=["GET"]),
+        Mount("/mcp", app=mcp_app),
+    ],
+    middleware=middleware,
+)
 
 
 if __name__ == "__main__":
+    import uvicorn
     logger.info(f"Starting Reddit MCP Server on http://{HOST}:{PORT}")
-    mcp.run(
-        transport="streamable-http",
-        host=HOST,
-        port=PORT,
-    )
+    uvicorn.run(app, host=HOST, port=PORT)
