@@ -238,7 +238,7 @@ mcp_app = mcp.http_app(middleware=middleware)
 # Create a wrapper Starlette app with health endpoint
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Route, Mount
 
 async def health_check(request):
     """HTTP health check endpoint"""
@@ -250,17 +250,15 @@ async def health_check(request):
         "timestamp": datetime.utcnow().isoformat() + "Z"
     })
 
-# Add health endpoint, MCP app handles /mcp internally
+# Create app with MCP lifespan for proper initialization
 app = Starlette(
     routes=[
         Route("/health", health_check, methods=["GET"]),
+        Mount("/", app=mcp_app),
     ],
     middleware=middleware,
+    lifespan=mcp_app.lifespan,  # Required for FastMCP session manager
 )
-
-# Mount MCP app at root - it handles /mcp path internally
-from starlette.routing import Mount
-app.routes.append(Mount("/", app=mcp_app))
 
 
 if __name__ == "__main__":
