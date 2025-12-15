@@ -257,6 +257,26 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse, HTMLResponse
 from starlette.routing import Route, Mount
 
+async def root_info(request):
+    """Root endpoint - server info for Uptime Kuma and general discovery"""
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    analytics.track_request("GET", "/", client_ip, user_agent)
+    
+    return JSONResponse({
+        "server": "Reddit MCP Server",
+        "version": "1.0.0",
+        "status": "online",
+        "transport": "streamable-http",
+        "endpoints": {
+            "mcp": "/mcp",
+            "health": "/health",
+            "analytics": "/analytics",
+            "dashboard": "/analytics/dashboard"
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    })
+
 async def health_check(request):
     """HTTP health check endpoint"""
     # Track request
@@ -296,9 +316,11 @@ async def analytics_import(request):
         return JSONResponse({"error": str(e)}, status_code=400)
 
 # Create app with MCP lifespan for proper initialization
+# Note: MCP app is mounted at root but handles /mcp path internally
 app = Starlette(
     routes=[
-        Route("/health", health_check, methods=["GET"]),
+        Route("/", root_info, methods=["GET", "HEAD"]),
+        Route("/health", health_check, methods=["GET", "HEAD"]),
         Route("/analytics", analytics_json, methods=["GET"]),
         Route("/analytics/dashboard", analytics_dashboard, methods=["GET"]),
         Route("/analytics/import", analytics_import, methods=["POST"]),
