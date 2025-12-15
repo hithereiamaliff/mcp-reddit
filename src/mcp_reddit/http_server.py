@@ -231,14 +231,14 @@ middleware = [
     )
 ]
 
-# Create ASGI app with middleware
+# Create ASGI app with middleware (MCP app serves at root)
 mcp_app = mcp.http_app(middleware=middleware)
 
 
 # Create a wrapper Starlette app with health endpoint
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
-from starlette.routing import Route, Mount
+from starlette.routing import Route
 
 async def health_check(request):
     """HTTP health check endpoint"""
@@ -250,14 +250,17 @@ async def health_check(request):
         "timestamp": datetime.utcnow().isoformat() + "Z"
     })
 
-# Mount MCP app under /mcp and add health endpoint
+# Add health endpoint, MCP app handles /mcp internally
 app = Starlette(
     routes=[
         Route("/health", health_check, methods=["GET"]),
-        Mount("/mcp", app=mcp_app),
     ],
     middleware=middleware,
 )
+
+# Mount MCP app at root - it handles /mcp path internally
+from starlette.routing import Mount
+app.routes.append(Mount("/", app=mcp_app))
 
 
 if __name__ == "__main__":
