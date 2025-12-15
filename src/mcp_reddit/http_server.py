@@ -145,6 +145,9 @@ async def fetch_reddit_hot_threads(subreddit: str, limit: int = 10, client_id: s
     Returns:
         Human readable string containing list of post information
     """
+    # Track tool call
+    analytics.track_tool_call("fetch_reddit_hot_threads", "mcp-client", "Claude Desktop")
+    
     try:
         # Use provided credentials or fall back to environment variables
         cid = client_id or DEFAULT_CLIENT_ID
@@ -187,6 +190,9 @@ async def fetch_reddit_post_content(post_id: str, comment_limit: int = 20, comme
     Returns:
         Human readable string containing post content and comments tree
     """
+    # Track tool call
+    analytics.track_tool_call("fetch_reddit_post_content", "mcp-client", "Claude Desktop")
+    
     try:
         # Use provided credentials or fall back to environment variables
         cid = client_id or DEFAULT_CLIENT_ID
@@ -322,7 +328,9 @@ app = Starlette(
         Route("/", root_info, methods=["GET", "HEAD"]),
         Route("/health", health_check, methods=["GET", "HEAD"]),
         Route("/analytics", analytics_json, methods=["GET"]),
+        Route("/analytics/", analytics_json, methods=["GET"]),
         Route("/analytics/dashboard", analytics_dashboard, methods=["GET"]),
+        Route("/analytics/dashboard/", analytics_dashboard, methods=["GET"]),
         Route("/analytics/import", analytics_import, methods=["POST"]),
         Mount("/", app=mcp_app),
     ],
