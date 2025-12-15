@@ -1,25 +1,39 @@
+# MCP Reddit Server - Streamable HTTP
+# For self-hosting on VPS with nginx reverse proxy
+
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装Git和必要工具
-RUN apt-get update && apt-get install -y git
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# 从GitHub克隆代码
-RUN git clone https://github.com/adhikasp/mcp-reddit.git .
+# Copy project files
+COPY pyproject.toml ./
+COPY src/ ./src/
 
-# 安装依赖
+# Install dependencies
 RUN pip install --no-cache-dir -e .
 
-# 设置环境变量
+# Create non-root user for security
+RUN addgroup --gid 1001 --system nodejs && \
+    adduser --system --uid 1001 mcp
+RUN chown -R mcp:nodejs /app
+USER mcp
+
+# Expose port for HTTP server
+EXPOSE 8080
+
+# Environment variables (can be overridden at runtime)
+ENV PORT=8080
+ENV HOST=0.0.0.0
 ENV PYTHONUNBUFFERED=1
 
-# 创建启动脚本，使用环境变量PORT
-RUN echo '#!/bin/bash\n\
-PORT=${PORT:-8000}\n\
-echo "Starting MCP server on port $PORT"\n\
-python -m mcp_reddit.reddit_fetcher --transport sse --host 0.0.0.0 --port $PORT\n\
-' > /app/start.sh && chmod +x /app/start.sh
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-# 使用启动脚本
-CMD ["/app/start.sh"]
+# Start the HTTP server
+CMD ["python", "-m", "mcp_reddit.http_server"]
