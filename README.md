@@ -148,7 +148,7 @@ https://mcp.techmavie.digital/reddit/mcp
     ↓
 Nginx (SSL termination + reverse proxy)
     ↓ HTTP
-Docker Container (port 8088 → 8080)
+Docker Container (port 8089 → 8080)
     ↓
 MCP Server (Streamable HTTP Transport)
     ↓
