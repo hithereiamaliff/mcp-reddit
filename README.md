@@ -31,6 +31,12 @@ This fork extends the original [ruradium/mcp-reddit](https://github.com/ruradium
 - **CORS Middleware**: Configured for browser-based MCP clients
 - **Health Check Endpoint**: `/health` for monitoring and load balancer integration
 
+### Analytics Dashboard
+- **Real-time Metrics**: Track requests, tool calls, and client activity
+- **Visual Dashboard**: Chart.js-powered dashboard at `/analytics/dashboard`
+- **Persistent Storage**: Analytics survive container restarts via Docker volumes
+- **Backup/Restore**: Import endpoint for restoring analytics from backups
+
 ### Code Improvements
 - **FastMCP v2**: Upgraded to FastMCP 2.0+ with native HTTP transport support
 - **Starlette Integration**: ASGI app with middleware support
@@ -138,6 +144,30 @@ Ask your AI assistant:
 > "What are the latest hot threads in r/technology?"
 
 The assistant will use the `fetch_reddit_hot_threads` tool to retrieve and summarize the posts.
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check (JSON) |
+| `/mcp` | POST | MCP protocol endpoint |
+| `/analytics` | GET | Analytics summary (JSON) |
+| `/analytics/dashboard` | GET | Visual analytics dashboard (HTML) |
+| `/analytics/import` | POST | Import analytics from backup |
+
+### Analytics Dashboard
+
+Access the visual dashboard at:
+```
+https://mcp.techmavie.digital/reddit/analytics/dashboard
+```
+
+Features:
+- Real-time metrics with auto-refresh (30 seconds)
+- Tool usage charts
+- Hourly request trends
+- Client breakdown
+- Recent tool call activity
 
 ## Architecture
 

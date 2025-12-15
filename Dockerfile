@@ -17,6 +17,9 @@ COPY src/ ./src/
 # Install dependencies
 RUN pip install --no-cache-dir .
 
+# Create data directory for analytics persistence
+RUN mkdir -p /app/data
+
 # Create non-root user for security
 RUN addgroup --gid 1001 --system nodejs && \
     adduser --system --uid 1001 mcp
@@ -30,6 +33,7 @@ EXPOSE 8080
 ENV PORT=8080
 ENV HOST=0.0.0.0
 ENV PYTHONUNBUFFERED=1
+ENV ANALYTICS_DIR=/app/data
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

@@ -10,6 +10,8 @@ Supports multiple API key input methods:
 
 import os
 import logging
+import signal
+import atexit
 from datetime import datetime
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
@@ -21,6 +23,9 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+# Import analytics
+from mcp_reddit.analytics import analytics, get_dashboard_html
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,6 +33,18 @@ logger = logging.getLogger(__name__)
 # Environment configuration
 PORT = int(os.environ.get("PORT", "8080"))
 HOST = os.environ.get("HOST", "0.0.0.0")
+
+# Graceful shutdown handler
+def graceful_shutdown(signum=None, frame=None):
+    """Save analytics on shutdown"""
+    logger.info("Shutting down, saving analytics...")
+    analytics.save()
+    logger.info("Analytics saved successfully")
+
+# Register shutdown handlers
+signal.signal(signal.SIGTERM, graceful_shutdown)
+signal.signal(signal.SIGINT, graceful_shutdown)
+atexit.register(analytics.save)
 
 # Default Reddit credentials from environment
 DEFAULT_CLIENT_ID = os.environ.get("REDDIT_CLIENT_ID", "")
@@ -235,13 +252,18 @@ middleware = [
 mcp_app = mcp.http_app(middleware=middleware)
 
 
-# Create a wrapper Starlette app with health endpoint
+# Create a wrapper Starlette app with health and analytics endpoints
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, HTMLResponse
 from starlette.routing import Route, Mount
 
 async def health_check(request):
     """HTTP health check endpoint"""
+    # Track request
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    analytics.track_request("GET", "/health", client_ip, user_agent)
+    
     return JSONResponse({
         "status": "healthy",
         "server": "Reddit MCP Server",
@@ -250,10 +272,36 @@ async def health_check(request):
         "timestamp": datetime.utcnow().isoformat() + "Z"
     })
 
+async def analytics_json(request):
+    """Analytics JSON endpoint"""
+    return JSONResponse(analytics.get_summary())
+
+async def analytics_dashboard(request):
+    """Analytics HTML dashboard"""
+    return HTMLResponse(get_dashboard_html())
+
+async def analytics_import(request):
+    """Import analytics from backup"""
+    try:
+        data = await request.json()
+        analytics.import_data(data)
+        return JSONResponse({
+            "message": "Analytics imported successfully",
+            "currentStats": {
+                "totalRequests": analytics.get_data()["totalRequests"],
+                "totalToolCalls": analytics.get_data()["totalToolCalls"],
+            }
+        })
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
 # Create app with MCP lifespan for proper initialization
 app = Starlette(
     routes=[
         Route("/health", health_check, methods=["GET"]),
+        Route("/analytics", analytics_json, methods=["GET"]),
+        Route("/analytics/dashboard", analytics_dashboard, methods=["GET"]),
+        Route("/analytics/import", analytics_import, methods=["POST"]),
         Mount("/", app=mcp_app),
     ],
     middleware=middleware,
