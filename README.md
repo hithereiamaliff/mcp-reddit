@@ -15,7 +15,8 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) s
 - Support for different post types (text, link, gallery, poll, crosspost)
 - Self-hosted VPS deployment with Docker and Nginx
 - Streamable HTTP transport for remote access
-- **Multiple API key input methods** (URL query, header, or environment variable)
+- **MCP Key Service integration** for secure hosted credential management
+- **Multiple API key input methods** (key service, URL query, header, or environment variable)
 
 ## What's New in This Fork
 
@@ -28,10 +29,12 @@ This fork extends the original [ruradium/mcp-reddit](https://github.com/ruradium
 - **GitHub Actions CI/CD**: Auto-deployment workflow on push to main branch
 
 ### Enhanced Security & Flexibility
+- **MCP Key Service**: Secure hosted credential management via [mcp-key-service](https://github.com/hithereiamaliff/mcp-key-service) — users connect with a `usr_xxx` key instead of raw Reddit credentials
 - **Multiple API Key Methods**: Pass Reddit credentials via:
-  1. URL query parameters (`?client_id=xxx&client_secret=xxx`)
+  1. Key service (`/mcp/usr_xxx` or `?api_key=usr_xxx`)
   2. HTTP headers (`X-Reddit-Client-ID`, `X-Reddit-Client-Secret`)
-  3. Environment variables (`REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`)
+  3. URL query parameters (`?client_id=xxx&client_secret=xxx`)
+  4. Environment variables (`REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`)
 - **CORS Middleware**: Configured for browser-based MCP clients
 - **Health Check Endpoint**: `/health` for monitoring and load balancer integration
 
@@ -52,7 +55,22 @@ This fork extends the original [ruradium/mcp-reddit](https://github.com/ruradium
 
 Add this to your MCP client configuration (Claude Desktop, Cursor, Windsurf, etc.):
 
-**Option 1: URL with API credentials (recommended for personal use)**
+**Option 1: MCP Key Service (recommended for hosted clients)**
+
+Get a `usr_xxx` API key from the [MCP Key Service portal](https://mcpkeys.techmavie.digital), then:
+
+```json
+{
+  "mcpServers": {
+    "reddit": {
+      "transport": "streamable-http",
+      "url": "https://mcp.techmavie.digital/reddit/mcp/usr_YOUR_KEY_HERE"
+    }
+  }
+}
+```
+
+**Option 2: Direct Reddit credentials (for personal/self-hosted use)**
 ```json
 {
   "mcpServers": {
@@ -64,7 +82,7 @@ Add this to your MCP client configuration (Claude Desktop, Cursor, Windsurf, etc
 }
 ```
 
-**Option 2: Without credentials (if server has env vars configured)**
+**Option 3: Without credentials (if server has env vars configured)**
 ```json
 {
   "mcpServers": {
@@ -128,17 +146,37 @@ Add this to your MCP client configuration (Claude Desktop, Cursor, Windsurf, etc
 | `sort` | string | `new` | Sort: `hot`, `new`, `top`, `controversial` |
 | `limit` | int | 10 | Number of items to fetch |
 
-## API Key Configuration
+## Credential Configuration
 
-You can provide Reddit API credentials in three ways (in order of priority):
+Reddit API credentials are resolved using the following priority chain (highest to lowest):
 
-| Method | Example |
-|--------|---------|
-| **URL Query Params** | `?client_id=xxx&client_secret=xxx` |
-| **HTTP Headers** | `X-Reddit-Client-ID: xxx` and `X-Reddit-Client-Secret: xxx` |
-| **Environment Variables** | `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` in `.env` |
+| Priority | Method | Example |
+|----------|--------|---------|
+| 1 | **Tool parameters** | `client_id` / `client_secret` passed directly to a tool call |
+| 2 | **MCP Key Service** | `/mcp/usr_xxx` in URL path or `?api_key=usr_xxx` in query |
+| 3 | **HTTP Headers** | `X-Reddit-Client-ID: xxx` and `X-Reddit-Client-Secret: xxx` |
+| 4 | **URL Query Params** | `?client_id=xxx&client_secret=xxx` |
+| 5 | **Environment Variables** | `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` in `.env` |
 
-To get Reddit API credentials:
+### MCP Key Service (recommended for hosted use)
+
+The server integrates with [mcp-key-service](https://github.com/hithereiamaliff/mcp-key-service) for secure credential management. Instead of passing raw Reddit credentials, users obtain a `usr_xxx` key from the key service portal. The MCP server resolves the key to Reddit credentials server-side.
+
+**Connection URL formats:**
+- Path-based: `https://mcp.techmavie.digital/reddit/mcp/usr_YOUR_KEY`
+- Query-based: `https://mcp.techmavie.digital/reddit/mcp?api_key=usr_YOUR_KEY`
+
+**Server-side setup** (in `.env` or Docker environment):
+```
+KEY_SERVICE_URL=https://mcpkeys.techmavie.digital
+KEY_SERVICE_TOKEN=your_internal_service_token
+```
+
+When `KEY_SERVICE_URL` is not set, the key service middleware is completely disabled (backward compatible).
+
+### Direct Reddit credentials
+
+To get Reddit API credentials directly:
 1. Go to [Reddit App Preferences](https://www.reddit.com/prefs/apps)
 2. Click "Create App" or "Create Another App"
 3. Select "script" as the app type
@@ -203,7 +241,9 @@ The assistant will use the appropriate MCP tool to retrieve and summarize the co
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check (JSON) |
-| `/mcp` | POST | MCP protocol endpoint |
+| `/mcp` | POST | MCP protocol endpoint (with env var or header credentials) |
+| `/mcp/usr_xxx` | POST | MCP protocol endpoint (with key service credential resolution) |
+| `/mcp?api_key=usr_xxx` | POST | MCP protocol endpoint (key service via query param) |
 | `/analytics` | GET | Analytics summary (JSON) |
 | `/analytics/dashboard` | GET | Visual analytics dashboard (HTML) |
 | `/analytics/import` | POST | Import analytics from backup |
@@ -227,11 +267,16 @@ Features:
 ```
 Client (Claude, Cursor, Windsurf, etc.)
     ↓ HTTPS
-https://mcp.techmavie.digital/reddit/mcp
+https://mcp.techmavie.digital/reddit/mcp/usr_xxx
     ↓
 Nginx (SSL termination + reverse proxy)
     ↓ HTTP
 Docker Container (port 8089 → 8080)
+    ↓
+KeyServiceMiddleware (resolves usr_xxx → Reddit credentials)
+    ↓                           ↓
+    ↓                   MCP Key Service
+    ↓                (mcpkeys.techmavie.digital)
     ↓
 MCP Server (Streamable HTTP Transport)
     ↓
