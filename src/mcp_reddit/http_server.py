@@ -14,7 +14,6 @@ import signal
 import atexit
 from datetime import datetime
 from typing import Optional
-from urllib.parse import parse_qs, urlparse
 from redditwarp.ASYNC import Client
 from redditwarp.models.submission_ASYNC import (
     Submission,
@@ -28,11 +27,12 @@ from redditwarp.models.comment_ASYNC import LooseComment
 from fastmcp import FastMCP
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 
 # Import analytics
 from mcp_reddit.analytics import analytics, get_dashboard_html
+
+# Import key service integration
+from mcp_reddit.key_service import KeyServiceMiddleware, get_effective_credentials
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -81,34 +81,6 @@ def _normalize_choice(value, valid_choices: set[str], default: str) -> str:
     normalized = value.strip().lower()
     return normalized if normalized in valid_choices else default
 
-
-def get_reddit_credentials(request: Request = None) -> tuple[str, str]:
-    """
-    Get Reddit API credentials from multiple sources (in order of priority):
-    1. URL query parameters
-    2. HTTP headers
-    3. Environment variables
-    """
-    client_id = DEFAULT_CLIENT_ID
-    client_secret = DEFAULT_CLIENT_SECRET
-    
-    if request:
-        # Check URL query parameters first
-        query_params = dict(request.query_params)
-        if "client_id" in query_params:
-            client_id = query_params["client_id"]
-        if "client_secret" in query_params:
-            client_secret = query_params["client_secret"]
-        
-        # Check headers (override query params if present)
-        header_client_id = request.headers.get("X-Reddit-Client-ID")
-        header_client_secret = request.headers.get("X-Reddit-Client-Secret")
-        if header_client_id:
-            client_id = header_client_id
-        if header_client_secret:
-            client_secret = header_client_secret
-    
-    return client_id, client_secret
 
 
 def get_reddit_client(client_id: str = "", client_secret: str = "") -> Client:
@@ -244,9 +216,9 @@ async def fetch_reddit_hot_threads(
     analytics.track_tool_call("fetch_reddit_hot_threads", "mcp-client", "Claude Desktop")
 
     try:
-        # Use provided credentials or fall back to environment variables
-        cid = client_id or DEFAULT_CLIENT_ID
-        csecret = client_secret or DEFAULT_CLIENT_SECRET
+        cid, csecret = get_effective_credentials(
+            client_id, client_secret, DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
+        )
         client = get_reddit_client(cid, csecret)
 
         # Get the async iterator for the chosen sort order
@@ -328,8 +300,9 @@ async def fetch_reddit_post_content(
 
     try:
         # Use provided credentials or fall back to environment variables
-        cid = client_id or DEFAULT_CLIENT_ID
-        csecret = client_secret or DEFAULT_CLIENT_SECRET
+        cid, csecret = get_effective_credentials(
+            client_id, client_secret, DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
+        )
         client = get_reddit_client(cid, csecret)
 
         submission = await client.p.submission.fetch(post_id)
@@ -385,8 +358,9 @@ async def search_reddit(
     analytics.track_tool_call("search_reddit", "mcp-client", "Claude Desktop")
 
     try:
-        cid = client_id or DEFAULT_CLIENT_ID
-        csecret = client_secret or DEFAULT_CLIENT_SECRET
+        cid, csecret = get_effective_credentials(
+            client_id, client_secret, DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
+        )
         client = get_reddit_client(cid, csecret)
 
         sort_val = _normalize_choice(sort, VALID_SEARCH_SORTS, "relevance")
@@ -439,8 +413,9 @@ async def fetch_subreddit_info(
     analytics.track_tool_call("fetch_subreddit_info", "mcp-client", "Claude Desktop")
 
     try:
-        cid = client_id or DEFAULT_CLIENT_ID
-        csecret = client_secret or DEFAULT_CLIENT_SECRET
+        cid, csecret = get_effective_credentials(
+            client_id, client_secret, DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
+        )
         client = get_reddit_client(cid, csecret)
 
         sr = await client.p.subreddit.fetch_by_name(subreddit)
@@ -517,8 +492,9 @@ async def fetch_user_profile(
     analytics.track_tool_call("fetch_user_profile", "mcp-client", "Claude Desktop")
 
     try:
-        cid = client_id or DEFAULT_CLIENT_ID
-        csecret = client_secret or DEFAULT_CLIENT_SECRET
+        cid, csecret = get_effective_credentials(
+            client_id, client_secret, DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET
+        )
         client = get_reddit_client(cid, csecret)
 
         # Fetch user info
@@ -615,26 +591,32 @@ def get_health_status() -> str:
 }}"""
 
 
-# Configure CORS middleware for browser-based clients
-middleware = [
-    Middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=[
-            "mcp-protocol-version",
-            "mcp-session-id",
-            "Authorization",
-            "Content-Type",
-            "X-Reddit-Client-ID",
-            "X-Reddit-Client-Secret",
-        ],
-        expose_headers=["mcp-session-id"],
-    )
-]
+# CORS settings shared by both inner MCP app and outer Starlette app
+_cors_kwargs = dict(
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "mcp-protocol-version",
+        "mcp-session-id",
+        "Authorization",
+        "Content-Type",
+        "X-Reddit-Client-ID",
+        "X-Reddit-Client-Secret",
+        "X-API-Key",
+    ],
+    expose_headers=["mcp-session-id"],
+)
 
-# Create ASGI app with middleware (MCP app serves at root)
-mcp_app = mcp.http_app(middleware=middleware)
+# Inner MCP app: CORS only (KeyServiceMiddleware is on the outer app)
+cors_middleware = [Middleware(CORSMiddleware, **_cors_kwargs)]
+mcp_app = mcp.http_app(middleware=cors_middleware)
+
+# Outer app middleware: CORS (outermost) + KeyService (inner).
+# CORS wraps KeyService, so 401/503 error responses still get CORS headers.
+outer_middleware = [
+    Middleware(CORSMiddleware, **_cors_kwargs),
+    Middleware(KeyServiceMiddleware),
+]
 
 
 # Create a wrapper Starlette app with health and analytics endpoints
@@ -702,6 +684,7 @@ async def analytics_import(request):
 
 # Create app with MCP lifespan for proper initialization
 # Note: MCP app is mounted at root but handles /mcp path internally
+# KeyServiceMiddleware rewrites /mcp/usr_xxx -> /mcp before routing reaches Mount
 app = Starlette(
     routes=[
         Route("/", root_info, methods=["GET", "HEAD"]),
@@ -713,12 +696,17 @@ app = Starlette(
         Route("/analytics/import", analytics_import, methods=["POST"]),
         Mount("/", app=mcp_app),
     ],
-    middleware=middleware,
+    middleware=outer_middleware,
     lifespan=mcp_app.lifespan,  # Required for FastMCP session manager
 )
 
 
-if __name__ == "__main__":
+def run_http():
+    """Entry point for both console script (mcp-reddit-http) and module execution."""
     import uvicorn
     logger.info(f"Starting Reddit MCP Server on http://{HOST}:{PORT}")
     uvicorn.run(app, host=HOST, port=PORT)
+
+
+if __name__ == "__main__":
+    run_http()
