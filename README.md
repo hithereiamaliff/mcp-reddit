@@ -6,9 +6,13 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) s
 
 ## Features
 
-- Fetch hot threads from any subreddit
-- Get detailed post content including comments
-- Support for different post types (text, link, gallery)
+- Fetch threads from any subreddit with flexible sorting (hot, new, top, rising, controversial)
+- Get detailed post content with configurable comment sorting
+- Search Reddit by query, optionally scoped to a subreddit
+- Fetch subreddit metadata, stats, and rules
+- Fetch user profiles and recent activity (posts, comments, or overview)
+- Cursor-based pagination for browsing through large result sets
+- Support for different post types (text, link, gallery, poll, crosspost)
 - Self-hosted VPS deployment with Docker and Nginx
 - Streamable HTTP transport for remote access
 - **Multiple API key input methods** (URL query, header, or environment variable)
@@ -76,8 +80,53 @@ Add this to your MCP client configuration (Claude Desktop, Cursor, Windsurf, etc
 
 | Tool | Description |
 |------|-------------|
-| `fetch_reddit_hot_threads` | Fetch hot threads from any subreddit |
-| `fetch_reddit_post_content` | Get detailed post content with comments |
+| `fetch_reddit_hot_threads` | Fetch threads from any subreddit with sorting, time filter, and pagination |
+| `fetch_reddit_post_content` | Get detailed post content with configurable comment sorting |
+| `search_reddit` | Search Reddit for posts matching a query |
+| `fetch_subreddit_info` | Get subreddit metadata, subscriber count, and rules |
+| `fetch_user_profile` | Fetch user profile info and recent activity |
+
+### Tool Parameters
+
+#### `fetch_reddit_hot_threads`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `subreddit` | string | *required* | Subreddit name (without `r/` prefix) |
+| `limit` | int | 10 | Number of posts to fetch |
+| `sort` | string | `hot` | Sort order: `hot`, `new`, `top`, `rising`, `controversial` |
+| `time_filter` | string | `day` | Time filter (for `top`/`controversial`): `hour`, `day`, `week`, `month`, `year`, `all` |
+| `after` | string | | Pagination cursor for next page |
+| `before` | string | | Pagination cursor for previous page |
+
+#### `fetch_reddit_post_content`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `post_id` | string | *required* | Reddit post ID |
+| `comment_limit` | int | 20 | Number of top-level comments |
+| `comment_depth` | int | 3 | Maximum comment tree depth |
+| `comment_sort` | string | `top` | Comment sort: `top`, `best`, `new`, `controversial`, `old`, `qa` |
+
+#### `search_reddit`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | *required* | Search query |
+| `subreddit` | string | | Subreddit to search within (empty = all of Reddit) |
+| `sort` | string | `relevance` | Sort: `relevance`, `hot`, `top`, `new`, `comments` |
+| `time_filter` | string | `all` | Time filter: `hour`, `day`, `week`, `month`, `year`, `all` |
+| `limit` | int | 10 | Number of results |
+
+#### `fetch_subreddit_info`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `subreddit` | string | *required* | Subreddit name (without `r/` prefix) |
+
+#### `fetch_user_profile`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `username` | string | *required* | Reddit username (without `u/` prefix) |
+| `content_type` | string | `overview` | Content type: `overview`, `submitted`, `comments` |
+| `sort` | string | `new` | Sort: `hot`, `new`, `top`, `controversial` |
+| `limit` | int | 10 | Number of items to fetch |
 
 ## API Key Configuration
 
@@ -142,8 +191,12 @@ Push to `main` branch to trigger auto-deployment.
 Ask your AI assistant:
 
 > "What are the latest hot threads in r/technology?"
+> "Search Reddit for posts about Python web frameworks"
+> "Tell me about the r/programming subreddit"
+> "What has user spez been posting recently?"
+> "Show me the top posts of the week in r/science"
 
-The assistant will use the `fetch_reddit_hot_threads` tool to retrieve and summarize the posts.
+The assistant will use the appropriate MCP tool to retrieve and summarize the content.
 
 ## API Endpoints
 

@@ -12,48 +12,22 @@ This document tracks missing parameters, unsupported features, and potential imp
 |-----------|------|----------|---------|-------------|
 | `subreddit` | string | Yes | — | Name of the subreddit (without `r/` prefix) |
 | `limit` | integer | No | 10 | Number of posts to fetch |
+| `sort` | string | No | `hot` | Sort order: `hot`, `new`, `top`, `rising`, `controversial` |
+| `time_filter` | string | No | `day` | Time filter for `top`/`controversial`: `hour`, `day`, `week`, `month`, `year`, `all` |
+| `after` | string | No | — | Pagination cursor to fetch results after (e.g. `t3_abc123`) |
+| `before` | string | No | — | Pagination cursor to fetch results before (e.g. `t3_abc123`) |
 | `client_id` | string | No | env var | Reddit API client ID |
 | `client_secret` | string | No | env var | Reddit API client secret |
 
-### Missing: Sort Parameter
+### ~~Missing: Sort Parameter~~ IMPLEMENTED
 
-**Issue:** The tool currently only fetches Reddit's **"hot"** listing. There is no parameter to change the sort order.
+Sort parameter added with support for `hot`, `new`, `top`, `rising`, `controversial`. Time filter parameter added for `top` and `controversial` sorts.
 
-Reddit supports the following listing endpoints, none of which are currently exposed:
+> **Note:** `best` is not available for subreddit listings — it is a front-page only endpoint in Reddit's API.
 
-| Sort | Reddit Endpoint | Description |
-|------|-----------------|-------------|
-| `hot` | `/r/{subreddit}/hot` | Default and currently the only supported sort |
-| `new` | `/r/{subreddit}/new` | Latest posts by submission time |
-| `top` | `/r/{subreddit}/top` | Top posts (requires `t` param: `hour`, `day`, `week`, `month`, `year`, `all`) |
-| `rising` | `/r/{subreddit}/rising` | Posts gaining traction |
-| `controversial` | `/r/{subreddit}/controversial` | Controversial posts (requires `t` param) |
-| `best` | `/r/{subreddit}/best` | Reddit's "best" algorithm |
+### ~~Missing: Pagination (`after` / `before`)~~ IMPLEMENTED
 
-**Suggested implementation:** Add a `sort` parameter (default: `hot`) and a `time_filter` parameter (for `top` and `controversial` sorts).
-
-```python
-# Example proposed signature
-def fetch_reddit_threads(
-    subreddit: str,
-    limit: int = 10,
-    sort: str = "hot",        # new | hot | top | rising | controversial | best
-    time_filter: str = "day", # hour | day | week | month | year | all (for top/controversial)
-    client_id: str = "",
-    client_secret: str = "",
-) -> str:
-```
-
-### Missing: Pagination (`after` / `before`)
-
-Reddit's listing API supports cursor-based pagination via `after` and `before` parameters (fullname of the last/first item, e.g. `t3_abc123`). Currently there's no way to paginate through results beyond the initial `limit`.
-
-**Suggested parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `after` | string | Fullname of the item to fetch results after (e.g. `t3_abc123`) |
-| `before` | string | Fullname of the item to fetch results before |
+Cursor-based pagination added via `after` and `before` parameters. Pagination cursors are only emitted in the response when Reddit confirms more pages exist (`has_after`/`has_before`).
 
 ---
 
@@ -66,43 +40,45 @@ Reddit's listing API supports cursor-based pagination via `after` and `before` p
 | `post_id` | string | Yes | — | Reddit post ID |
 | `comment_limit` | integer | No | 20 | Number of top-level comments to fetch |
 | `comment_depth` | integer | No | 3 | Maximum depth of comment tree to traverse |
+| `comment_sort` | string | No | `top` | Comment sort: `top`, `best`, `new`, `controversial`, `old`, `qa` |
 | `client_id` | string | No | env var | Reddit API client ID |
 | `client_secret` | string | No | env var | Reddit API client secret |
 
-### Missing: Comment Sort
+### ~~Missing: Comment Sort~~ IMPLEMENTED
 
-Reddit supports sorting comments by `best`, `top`, `new`, `controversial`, `old`, `q&a`. Currently not exposed.
-
-**Suggested parameter:**
-
-| Parameter | Type | Default | Values |
-|-----------|------|---------|--------|
-| `comment_sort` | string | `best` | `best`, `top`, `new`, `controversial`, `old`, `qa` |
+Comment sort parameter added with support for `top`, `best`, `new`, `controversial`, `old`, `qa`. The `best` value maps to Reddit API's `confidence` sort internally, while the default remains `top` for backward compatibility with existing callers.
 
 ---
 
-## General Missing Features
+## ~~General Missing Features~~ IMPLEMENTED
 
-### Search Tool
+### ~~Search Tool~~ IMPLEMENTED as `search_reddit`
 
-No `search_reddit` tool exists yet. Reddit's search API (`/r/{subreddit}/search` or `/search`) supports:
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | *required* | Search query |
+| `subreddit` | string | `""` | Subreddit to search within (empty = all of Reddit) |
+| `sort` | string | `relevance` | Sort: `relevance`, `hot`, `top`, `new`, `comments` |
+| `time_filter` | string | `all` | Time filter: `hour`, `day`, `week`, `month`, `year`, `all` |
+| `limit` | int | 10 | Number of results |
 
-| Parameter | Description |
-|-----------|-------------|
-| `q` | Search query |
-| `sort` | `relevance`, `hot`, `top`, `new`, `comments` |
-| `t` | Time filter: `hour`, `day`, `week`, `month`, `year`, `all` |
-| `restrict_sr` | Restrict to subreddit (boolean) |
-| `type` | `link`, `sr`, `user` |
+### ~~User Profile Tool~~ IMPLEMENTED as `fetch_user_profile`
 
-### User Profile Tool
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `username` | string | *required* | Reddit username (without `u/` prefix) |
+| `content_type` | string | `overview` | Content type: `overview`, `submitted`, `comments` |
+| `sort` | string | `new` | Sort: `hot`, `new`, `top`, `controversial` |
+| `limit` | int | 10 | Number of items to fetch |
 
-No tool to fetch a user's posts or comments (`/user/{username}/submitted`, `/user/{username}/comments`).
+### ~~Subreddit Info Tool~~ IMPLEMENTED as `fetch_subreddit_info`
 
-### Subreddit Info Tool
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `subreddit` | string | *required* | Subreddit name (without `r/` prefix) |
 
-No tool to fetch subreddit metadata (`/r/{subreddit}/about`) — subscriber count, description, rules, etc.
+Returns subscriber count, description, rules, accepted post types, NSFW/quarantine status, and more.
 
 ---
 
-*Last updated: 2026-03-30*
+*Last updated: 2026-03-31*
