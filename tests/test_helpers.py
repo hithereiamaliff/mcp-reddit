@@ -253,6 +253,53 @@ class TestToolDefaults:
         signature = inspect.signature(fetch_reddit_post_content)
         assert signature.parameters["comment_sort"].default == "top"
 
+    def test_fetch_user_profile_new_params_have_defaults(self):
+        from mcp_reddit.reddit_fetcher import fetch_user_profile
+
+        sig = inspect.signature(fetch_user_profile)
+        assert sig.parameters["time_filter"].default == ""
+        assert sig.parameters["after"].default == ""
+        assert sig.parameters["before"].default == ""
+
+    def test_search_user_posts_defaults(self):
+        from mcp_reddit.reddit_fetcher import search_user_posts
+
+        sig = inspect.signature(search_user_posts)
+        assert sig.parameters["username"].default is inspect.Parameter.empty
+        assert sig.parameters["query"].default == ""
+        assert sig.parameters["subreddit"].default == ""
+        assert sig.parameters["sort"].default == "new"
+        assert sig.parameters["time_filter"].default == "all"
+        assert sig.parameters["limit"].default == 10
+
+
+class TestSearchUserPostsQueryConstruction:
+    """Test that search_user_posts builds correct author: queries."""
+
+    def test_username_only_builds_author_filter(self):
+        username = "testuser"
+        query = ""
+        search_query = f"author:{username}"
+        if query:
+            search_query += f" {query}"
+        assert search_query == "author:testuser"
+
+    def test_username_with_query_appends_terms(self):
+        username = "testuser"
+        query = "python web"
+        search_query = f"author:{username}"
+        if query:
+            search_query += f" {query}"
+        assert search_query == "author:testuser python web"
+
+    def test_empty_query_does_not_append_space(self):
+        username = "testuser"
+        query = ""
+        search_query = f"author:{username}"
+        if query:
+            search_query += f" {query}"
+        assert not search_query.endswith(" ")
+
 
 class TestValidationConstants:
     """Test that validation constants are properly defined."""

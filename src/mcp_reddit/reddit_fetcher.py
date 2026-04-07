@@ -330,7 +330,10 @@ async def fetch_user_profile(
     username: str,
     content_type: str = "overview",
     sort: str = "new",
-    limit: int = 10
+    limit: int = 10,
+    time_filter: str = "",
+    after: str = "",
+    before: str = ""
 ) -> str:
     """
     Fetch a Reddit user's profile info and recent activity
@@ -340,30 +343,48 @@ async def fetch_user_profile(
         content_type: Type of content - overview, submitted, comments (default: overview)
         sort: Sort order - hot, new, top, controversial (default: new)
         limit: Number of items to fetch (default: 10)
+        time_filter: Time filter for top/controversial - hour, day, week, month, year, all (only applies when sort is top or controversial)
+        after: Pagination cursor to fetch results after (e.g. t3_abc123)
+        before: Pagination cursor to fetch results before (e.g. t3_abc123)
 
     Returns:
         Human readable string containing user profile and activity
     """
     try:
-        user = await client.p.user.fetch_by_name(username)
+        is_first_page = not after and not before
 
-        profile = (
-            f"User: u/{user.name}\n"
-            f"Post Karma: {user.post_karma:,}\n"
-            f"Comment Karma: {user.comment_karma:,}\n"
-            f"Total Karma: {user.total_karma:,}\n"
-            f"Account Created: {user.created_at.strftime('%Y-%m-%d')}\n"
-            f"Has Premium: {'Yes' if user.has_premium else 'No'}\n"
-            f"Is Moderator: {'Yes' if user.is_a_subreddit_moderator else 'No'}\n"
-        )
+        if is_first_page:
+            user = await client.p.user.fetch_by_name(username)
+            profile = (
+                f"User: u/{user.name}\n"
+                f"Post Karma: {user.post_karma:,}\n"
+                f"Comment Karma: {user.comment_karma:,}\n"
+                f"Total Karma: {user.total_karma:,}\n"
+                f"Account Created: {user.created_at.strftime('%Y-%m-%d')}\n"
+                f"Has Premium: {'Yes' if user.has_premium else 'No'}\n"
+                f"Is Moderator: {'Yes' if user.is_a_subreddit_moderator else 'No'}\n"
+            )
+        else:
+            profile = f"User: u/{username}\n"
 
         ct = _normalize_choice(content_type, VALID_USER_CONTENT_TYPES, "overview")
         sort_val = _normalize_choice(sort, VALID_USER_SORTS, "new")
 
         items = []
+        iterator = None
         if ct == "overview":
             profile += f"\n--- Recent Activity (overview, sorted by {sort_val}) ---\n"
-            async for item in client.p.user.pull.overview(username, limit, sort=sort_val):
+            iterator = client.p.user.pull.overview(username, limit, sort=sort_val)
+            paginator = iterator.get_paginator()
+            if time_filter and sort_val in ("top", "controversial"):
+                tf = _normalize_choice(time_filter, VALID_TIME_FILTERS, "all")
+                paginator.params = {**(paginator.params or {}), 't': tf}
+            if after:
+                paginator.after = after
+            if before:
+                paginator.before = before
+                paginator.direction = False
+            async for item in iterator:
                 if isinstance(item, Submission):
                     items.append(
                         f"[Post] r/{item.subreddit.name}\n"
@@ -387,7 +408,17 @@ async def fetch_user_profile(
 
         elif ct == "submitted":
             profile += f"\n--- Posts (sorted by {sort_val}) ---\n"
-            async for submission in client.p.user.pull.submitted(username, limit, sort=sort_val):
+            iterator = client.p.user.pull.submitted(username, limit, sort=sort_val)
+            paginator = iterator.get_paginator()
+            if time_filter and sort_val in ("top", "controversial"):
+                tf = _normalize_choice(time_filter, VALID_TIME_FILTERS, "all")
+                paginator.params = {**(paginator.params or {}), 't': tf}
+            if after:
+                paginator.after = after
+            if before:
+                paginator.before = before
+                paginator.direction = False
+            async for submission in iterator:
                 items.append(
                     f"Title: {submission.title}\n"
                     f"Subreddit: r/{submission.subreddit.name}\n"
@@ -401,7 +432,17 @@ async def fetch_user_profile(
 
         elif ct == "comments":
             profile += f"\n--- Comments (sorted by {sort_val}) ---\n"
-            async for comment in client.p.user.pull.comments(username, limit, sort=sort_val):
+            iterator = client.p.user.pull.comments(username, limit, sort=sort_val)
+            paginator = iterator.get_paginator()
+            if time_filter and sort_val in ("top", "controversial"):
+                tf = _normalize_choice(time_filter, VALID_TIME_FILTERS, "all")
+                paginator.params = {**(paginator.params or {}), 't': tf}
+            if after:
+                paginator.after = after
+            if before:
+                paginator.before = before
+                paginator.direction = False
+            async for comment in iterator:
                 body_preview = comment.body[:300] + "..." if len(comment.body) > 300 else comment.body
                 items.append(
                     f"Subreddit: r/{comment.subreddit.name}\n"
@@ -416,10 +457,89 @@ async def fetch_user_profile(
         else:
             profile += "\nNo activity found."
 
+        # Append pagination cursors only when more pages exist
+        if iterator is not None:
+            paginator = iterator.get_paginator()
+            has_pagination = False
+            pagination_info = "\n\n--- Pagination ---"
+            if paginator.has_after:
+                pagination_info += f"\nnext_after: {paginator.after}"
+                has_pagination = True
+            if paginator.has_before:
+                pagination_info += f"\nnext_before: {paginator.before}"
+                has_pagination = True
+            if has_pagination:
+                profile += pagination_info
+
         return profile
 
     except Exception as e:
         logging.error(f"User profile error: {str(e)}")
+        return f"An error occurred: {str(e)}"
+
+
+@mcp.tool()
+async def search_user_posts(
+    username: str,
+    query: str = "",
+    subreddit: str = "",
+    sort: str = "new",
+    time_filter: str = "all",
+    limit: int = 10
+) -> str:
+    """
+    Search for posts by a specific user, even if their profile is hidden.
+    Uses Reddit's search with author: filter as a workaround for hidden profiles.
+
+    Args:
+        username: Reddit username (without u/ prefix)
+        query: Additional search query to filter results (optional)
+        subreddit: Subreddit to search within (empty = all of Reddit)
+        sort: Sort order - relevance, hot, top, new, comments (default: new)
+        time_filter: Time filter - hour, day, week, month, year, all (default: all)
+        limit: Number of results to return (default: 10)
+
+    Returns:
+        Human readable string containing the user's posts found via search
+    """
+    try:
+        sort_val = _normalize_choice(sort, VALID_SEARCH_SORTS, "new")
+        time_val = _normalize_choice(time_filter, VALID_TIME_FILTERS, "all")
+
+        search_query = f"author:{username}"
+        if query:
+            search_query += f" {query}"
+
+        posts = []
+        async for submission in client.p.submission.search(
+            subreddit, search_query, limit, sort=sort_val, time=time_val
+        ):
+            post_info = (
+                f"Title: {submission.title}\n"
+                f"Score: {submission.score}\n"
+                f"Comments: {submission.comment_count}\n"
+                f"Author: {submission.author_display_name or '[deleted]'}\n"
+                f"Subreddit: r/{submission.subreddit.name}\n"
+                f"Type: {_get_post_type(submission)}\n"
+                f"Content: {_get_content(submission)}\n"
+                f"Link: {_get_submission_link(submission)}\n"
+                f"---"
+            )
+            posts.append(post_info)
+
+        if not posts:
+            return f"No posts found for user '{username}'" + (f" matching '{query}'" if query else "") + "."
+
+        header = f"Posts by u/{username}"
+        if query:
+            header += f" matching '{query}'"
+        if subreddit:
+            header += f" in r/{subreddit}"
+
+        return header + f":\n\n" + "\n\n".join(posts)
+
+    except Exception as e:
+        logging.error(f"Search user posts error: {str(e)}")
         return f"An error occurred: {str(e)}"
 
 

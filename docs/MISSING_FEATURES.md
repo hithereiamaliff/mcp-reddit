@@ -70,6 +70,24 @@ Comment sort parameter added with support for `top`, `best`, `new`, `controversi
 | `content_type` | string | `overview` | Content type: `overview`, `submitted`, `comments` |
 | `sort` | string | `new` | Sort: `hot`, `new`, `top`, `controversial` |
 | `limit` | int | 10 | Number of items to fetch |
+| `time_filter` | string | | Time filter for `top`/`controversial`: `hour`, `day`, `week`, `month`, `year`, `all` |
+| `after` | string | | Pagination cursor for next page |
+| `before` | string | | Pagination cursor for previous page |
+
+Pagination and time filter support added matching the patterns from `fetch_reddit_hot_threads`. Profile metadata is only fetched on the first page; subsequent pages skip the metadata API call.
+
+### ~~User Post Search~~ IMPLEMENTED as `search_user_posts`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `username` | string | *required* | Reddit username (without `u/` prefix) |
+| `query` | string | | Additional search query to filter results |
+| `subreddit` | string | | Subreddit to search within (empty = all of Reddit) |
+| `sort` | string | `new` | Sort: `relevance`, `hot`, `top`, `new`, `comments` |
+| `time_filter` | string | `all` | Time filter: `hour`, `day`, `week`, `month`, `year`, `all` |
+| `limit` | int | 10 | Number of results |
+
+Uses Reddit's search endpoint with `author:username` filter. This works as a workaround for profiles hidden via the "Content and Activity" privacy setting (launched June 2025). Note: only finds posts (submissions), not comments.
 
 ### ~~Subreddit Info Tool~~ IMPLEMENTED as `fetch_subreddit_info`
 
@@ -81,4 +99,4 @@ Returns subscriber count, description, rules, accepted post types, NSFW/quaranti
 
 ---
 
-*Last updated: 2026-03-31*
+*Last updated: 2026-04-07*

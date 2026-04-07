@@ -10,7 +10,8 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) s
 - Get detailed post content with configurable comment sorting
 - Search Reddit by query, optionally scoped to a subreddit
 - Fetch subreddit metadata, stats, and rules
-- Fetch user profiles and recent activity (posts, comments, or overview)
+- Fetch user profiles and recent activity with pagination and time filters
+- Search for user posts even when profiles are hidden (author: search workaround)
 - Cursor-based pagination for browsing through large result sets
 - Support for different post types (text, link, gallery, poll, crosspost)
 - Self-hosted VPS deployment with Docker and Nginx
@@ -103,6 +104,7 @@ Get a `usr_xxx` API key from the [MCP Key Service portal](https://mcpkeys.techma
 | `search_reddit` | Search Reddit for posts matching a query |
 | `fetch_subreddit_info` | Get subreddit metadata, subscriber count, and rules |
 | `fetch_user_profile` | Fetch user profile info and recent activity |
+| `search_user_posts` | Search for posts by a specific user (works even with hidden profiles) |
 
 ### Tool Parameters
 
@@ -145,6 +147,19 @@ Get a `usr_xxx` API key from the [MCP Key Service portal](https://mcpkeys.techma
 | `content_type` | string | `overview` | Content type: `overview`, `submitted`, `comments` |
 | `sort` | string | `new` | Sort: `hot`, `new`, `top`, `controversial` |
 | `limit` | int | 10 | Number of items to fetch |
+| `time_filter` | string | | Time filter for `top`/`controversial`: `hour`, `day`, `week`, `month`, `year`, `all` |
+| `after` | string | | Pagination cursor for next page |
+| `before` | string | | Pagination cursor for previous page |
+
+#### `search_user_posts`
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `username` | string | *required* | Reddit username (without `u/` prefix) |
+| `query` | string | | Additional search query to filter results |
+| `subreddit` | string | | Subreddit to search within (empty = all of Reddit) |
+| `sort` | string | `new` | Sort: `relevance`, `hot`, `top`, `new`, `comments` |
+| `time_filter` | string | `all` | Time filter: `hour`, `day`, `week`, `month`, `year`, `all` |
+| `limit` | int | 10 | Number of results |
 
 ## Credential Configuration
 
@@ -233,6 +248,7 @@ Ask your AI assistant:
 > "Tell me about the r/programming subreddit"
 > "What has user spez been posting recently?"
 > "Show me the top posts of the week in r/science"
+> "Find posts by a user whose profile is hidden"
 
 The assistant will use the appropriate MCP tool to retrieve and summarize the content.
 
